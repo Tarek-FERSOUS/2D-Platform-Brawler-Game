@@ -149,6 +149,7 @@ export class CombatSystem {
     this.particles = particles;
     this.camera = camera;
     this.debugHitboxes = [];
+    this.projectiles = [];
   }
 
   update(players, dt) {
@@ -174,6 +175,81 @@ export class CombatSystem {
         attacker.currentAttack = null;
       }
     }
+
+    for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = this.projectiles[i];
+      projectile.life -= dt;
+      projectile.x += projectile.vx * dt;
+      projectile.y += projectile.vy * dt;
+      projectile.vy += projectile.gravity * dt;
+
+      if (projectile.life <= 0) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+
+      let consumed = false;
+      for (const target of players) {
+        if (target.id === projectile.ownerId || target.outOfStocks || target.respawnTimer > 0) {
+          continue;
+        }
+
+        if (target.isInvulnerable()) {
+          continue;
+        }
+
+        const hitbox = createAABB(projectile.x - projectile.radius, projectile.y - projectile.radius, projectile.radius * 2, projectile.radius * 2);
+        if (!aabbIntersects(hitbox, target.getHurtbox())) {
+          continue;
+        }
+
+        if (projectile.kind === "throwable") {
+          target.damage += projectile.damage;
+          target.vx = projectile.vx * 0.92;
+          target.vy = -240;
+          target.hitstunTimer = Math.max(target.hitstunTimer, 0.2);
+          this.particles.spawnHitSpark(target.centerX, target.centerY, projectile.color);
+        } else {
+          this.applyExplosion(projectile, target, players);
+        }
+
+        this.projectiles.splice(i, 1);
+        consumed = true;
+        break;
+      }
+
+      if (!consumed && projectile.kind === "grenade" && projectile.vy > 0 && projectile.life < 0.6) {
+        this.applyExplosion(projectile, null, players);
+        this.projectiles.splice(i, 1);
+      }
+    }
+  }
+
+  applyExplosion(projectile, primaryTarget, players) {
+    const radius = 92;
+    for (const target of players) {
+      if (target.id === projectile.ownerId || target.outOfStocks || target.respawnTimer > 0) {
+        continue;
+      }
+
+      const dx = target.centerX - projectile.x;
+      const dy = target.centerY - projectile.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > radius) {
+        continue;
+      }
+
+      const forceT = 1 - dist / radius;
+      const damage = projectile.damage * (0.55 + forceT * 0.8);
+      target.damage += damage;
+      target.vx = Math.sign(dx || 1) * (220 + 240 * forceT);
+      target.vy = -(220 + 260 * forceT);
+      target.onGround = false;
+      target.hitstunTimer = Math.max(target.hitstunTimer, 0.18 + 0.18 * forceT);
+    }
+
+    this.particles.spawnHitSpark(projectile.x, projectile.y, projectile.color);
+    this.camera.addShake(primaryTarget ? 0.18 : 0.12, 0.15);
   }
 
   handlePlayerActions(player, intent) {
@@ -192,6 +268,44 @@ export class CombatSystem {
     }
 
     if (player.hitstunTimer > 0 || player.dodgeTimer > 0 || player.attackLockTimer > 0) {
+      return;
+    }
+
+    const ability = WEAPON_DEFS[player.weaponType] || WEAPON_DEFS.unarmed;
+
+    if (player.weaponType === "throwables" && intent.lightPressed && player.throwableCooldown <= 0) {
+      this.projectiles.push({
+        kind: "throwable",
+        ownerId: player.id,
+        x: player.centerX + player.facing * 26,
+        y: player.y + player.height * 0.45,
+        vx: player.facing * 620,
+        vy: -70,
+        gravity: 520,
+        life: 1.8,
+        radius: 11,
+        damage: 8,
+        color: ability.color,
+      });
+      player.throwableCooldown = ability.throwCooldown;
+      return;
+    }
+
+    if (player.weaponType === "explosives" && intent.heavyPressed && player.grenadeCooldown <= 0) {
+      this.projectiles.push({
+        kind: "grenade",
+        ownerId: player.id,
+        x: player.centerX + player.facing * 20,
+        y: player.y + player.height * 0.28,
+        vx: player.facing * 450,
+        vy: -540,
+        gravity: 980,
+        life: 1.35,
+        radius: 14,
+        damage: 12,
+        color: ability.color,
+      });
+      player.grenadeCooldown = ability.grenadeCooldown;
       return;
     }
 
@@ -333,10 +447,14 @@ export class CombatSystem {
   }
 
   applyHit(attacker, target, attack) {
-    const totalDamage = attack.damage;
+    const attackerAbility = WEAPON_DEFS[attacker.weaponType] || WEAPON_DEFS.unarmed;
+    const targetAbility = WEAPON_DEFS[target.weaponType] || WEAPON_DEFS.unarmed;
+
+    const totalDamage = attack.damage * attackerAbility.damageMultiplier * targetAbility.damageTakenMultiplier;
     target.damage += totalDamage;
 
-    const kbMagnitude = attack.baseKnockback + target.damage * attack.knockbackScaling;
+    const kbMagnitude =
+      (attack.baseKnockback + target.damage * attack.knockbackScaling) * attackerAbility.knockbackMultiplier;
     const rad = (attack.angle * Math.PI) / 180;
 
     let dirX = Math.cos(rad);

@@ -50,6 +50,10 @@ export class Player {
 
     this.weaponType = "unarmed";
     this.weaponTime = 0;
+    this.abilityTimer = 0;
+    this.throwableCooldown = 0;
+    this.grenadeCooldown = 0;
+    this.teleportCooldown = 0;
 
     this.currentAttack = null;
     this.attackCooldowns = new Map();
@@ -134,6 +138,10 @@ export class Player {
     this.vy = 0;
     this.damage = 0;
     this.weaponType = "unarmed";
+    this.abilityTimer = 0;
+    this.throwableCooldown = 0;
+    this.grenadeCooldown = 0;
+    this.teleportCooldown = 0;
     this.currentAttack = null;
     this.attackLockTimer = 0;
     this.hitstunTimer = 0;
@@ -148,6 +156,25 @@ export class Player {
 
   tickTimers(dt) {
     this.weaponTime += dt;
+
+    if (this.abilityTimer > 0) {
+      this.abilityTimer = Math.max(0, this.abilityTimer - dt);
+      if (this.abilityTimer <= 0) {
+        this.weaponType = "unarmed";
+      }
+    }
+
+    if (this.throwableCooldown > 0) {
+      this.throwableCooldown = Math.max(0, this.throwableCooldown - dt);
+    }
+
+    if (this.grenadeCooldown > 0) {
+      this.grenadeCooldown = Math.max(0, this.grenadeCooldown - dt);
+    }
+
+    if (this.teleportCooldown > 0) {
+      this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
+    }
 
     if (this.hitstunTimer > 0) {
       this.hitstunTimer = Math.max(0, this.hitstunTimer - dt);

@@ -8,7 +8,7 @@ import { CombatSystem } from "./combat.js";
 import { WeaponSystem } from "./weapons.js";
 import { ParticleSystem } from "./particles.js";
 import { Camera } from "./camera.js";
-import { createStageRotation } from "./stage.js";
+import { applyStageTeleports, createStageRotation, updateStageDynamics } from "./stage.js";
 import { Renderer } from "./renderer.js";
 import { MultiplayerManager } from "./multiplayer.js";
 import { createAssetCatalog } from "./assets.js";
@@ -100,6 +100,7 @@ function syncEcsFromPlayers() {
 function applyStage(nextIndex) {
   stageIndex = (nextIndex + stages.length) % stages.length;
   stage = stages[stageIndex];
+  stage.time = 0;
   weaponSystem.stage = stage;
   camera.setStage(stage);
 
@@ -133,6 +134,10 @@ function resetMatch({ cycleStage = false } = {}) {
     player.outOfStocks = false;
     player.damage = 0;
     player.weaponType = "unarmed";
+    player.abilityTimer = 0;
+    player.throwableCooldown = 0;
+    player.grenadeCooldown = 0;
+    player.teleportCooldown = 0;
     player.currentAttack = null;
     player.attackLockTimer = 0;
     player.attackCooldowns.clear();
@@ -209,6 +214,7 @@ function handleOutOfBounds(player) {
 
 function update(dt) {
   frameNumber += 1;
+  updateStageDynamics(stage, dt);
 
   if (input.wasPressed("KeyM")) {
     resetMatch({ cycleStage: true });
@@ -245,6 +251,8 @@ function update(dt) {
       registerLandingAndJumpEffects(player, wasOnGround, neutralIntent);
     }
 
+    applyStageTeleports(stage, players, particles);
+
     camera.update(players, canvas, dt, stage);
     particles.update(dt);
     for (const player of players) {
@@ -275,6 +283,8 @@ function update(dt) {
       updatePlayerPhysics(player, intent, stage, dt);
       registerLandingAndJumpEffects(player, wasOnGround, intent);
     }
+
+    applyStageTeleports(stage, players, particles);
 
     combat.update(players, dt);
     weaponSystem.update(dt, players);

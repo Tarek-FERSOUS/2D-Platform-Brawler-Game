@@ -1,71 +1,114 @@
-﻿import { aabbIntersects, createAABB } from "./collision.js";
+import { aabbIntersects, createAABB } from "./collision.js";
 
 export const WEAPON_DEFS = {
   unarmed: {
-    name: "Unarmed",
+    name: "None",
+    kind: "neutral",
     color: "#f9f9f9",
+    duration: 0,
     damageMultiplier: 1,
     knockbackMultiplier: 1,
+    speedMultiplier: 1,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.55,
+    grenadeCooldown: 1.05,
     attackOverrides: {},
   },
-  sword: {
-    name: "Sword",
-    color: "#9de8ff",
-    damageMultiplier: 1.08,
-    knockbackMultiplier: 1.05,
-    attackOverrides: {
-      sideLight: {
-        damage: 12,
-        knockbackScaling: 8.2,
-        hitbox: { offsetX: 46, offsetY: 18, width: 64, height: 24 },
-      },
-      neutralAir: {
-        startup: 0.05,
-        damage: 11,
-        angle: 84,
-      },
-    },
+  shield: {
+    name: "Aegis Shield",
+    kind: "defense",
+    color: "#7de3ff",
+    duration: 10,
+    damageMultiplier: 1,
+    knockbackMultiplier: 0.96,
+    speedMultiplier: 0.96,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 0.68,
+    throwCooldown: 0.55,
+    grenadeCooldown: 1.05,
+    attackOverrides: {},
   },
-  hammer: {
-    name: "Hammer",
-    color: "#ffc680",
-    damageMultiplier: 1.2,
-    knockbackMultiplier: 1.16,
-    attackOverrides: {
-      heavy: {
-        startup: 0.18,
-        active: 0.14,
-        damage: 21,
-        baseKnockback: 450,
-        knockbackScaling: 11.8,
-      },
-      downAir: {
-        damage: 17,
-        angle: 290,
-      },
-    },
+  float: {
+    name: "Sky Float",
+    kind: "mobility",
+    color: "#dcb8ff",
+    duration: 10,
+    damageMultiplier: 1,
+    knockbackMultiplier: 1,
+    speedMultiplier: 1,
+    gravityMultiplier: 0.62,
+    maxFallMultiplier: 0.64,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.55,
+    grenadeCooldown: 1.05,
+    attackOverrides: {},
   },
-  blasters: {
-    name: "Blasters",
-    color: "#b9b4ff",
+  speed: {
+    name: "Velocity Core",
+    kind: "mobility",
+    color: "#73ff96",
+    duration: 9,
     damageMultiplier: 0.95,
-    knockbackMultiplier: 0.92,
-    attackOverrides: {
-      neutralLight: {
-        startup: 0.04,
-        active: 0.1,
-        damage: 8,
-        knockbackScaling: 5.6,
-        hitbox: { offsetX: 38, offsetY: 10, width: 74, height: 18 },
-      },
-      sideAir: {
-        startup: 0.06,
-        damage: 10,
-        hitbox: { offsetX: 42, offsetY: 8, width: 76, height: 22 },
-      },
-    },
+    knockbackMultiplier: 0.95,
+    speedMultiplier: 1.3,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.48,
+    grenadeCooldown: 1.05,
+    attackOverrides: {},
+  },
+  heavy: {
+    name: "Titan Force",
+    kind: "offense",
+    color: "#ffcb6b",
+    duration: 9,
+    damageMultiplier: 1.28,
+    knockbackMultiplier: 1.24,
+    speedMultiplier: 0.96,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.55,
+    grenadeCooldown: 1.05,
+    attackOverrides: {},
+  },
+  throwables: {
+    name: "Arc Throw",
+    kind: "offense",
+    color: "#76f8ff",
+    duration: 10,
+    damageMultiplier: 1,
+    knockbackMultiplier: 1,
+    speedMultiplier: 1,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.38,
+    grenadeCooldown: 1.05,
+    attackOverrides: {},
+  },
+  explosives: {
+    name: "Grenadier",
+    kind: "offense",
+    color: "#ff7f7f",
+    duration: 9,
+    damageMultiplier: 1.05,
+    knockbackMultiplier: 1.08,
+    speedMultiplier: 1,
+    gravityMultiplier: 1,
+    maxFallMultiplier: 1,
+    damageTakenMultiplier: 1,
+    throwCooldown: 0.55,
+    grenadeCooldown: 0.85,
+    attackOverrides: {},
   },
 };
+
+const ORB_POOL = ["shield", "float", "speed", "heavy", "throwables", "explosives"];
 
 export class WeaponPickup {
   constructor(id, x, y, type) {
@@ -73,11 +116,12 @@ export class WeaponPickup {
     this.x = x;
     this.y = y;
     this.baseY = y;
-    this.width = 30;
-    this.height = 30;
+    this.width = 34;
+    this.height = 34;
     this.type = type;
-    this.life = 16;
+    this.life = 14;
     this.bobTimer = Math.random() * Math.PI * 2;
+    this.spin = Math.random() * Math.PI * 2;
   }
 
   getAABB() {
@@ -93,11 +137,11 @@ export class WeaponSystem {
   constructor(stage) {
     this.stage = stage;
     this.pickups = [];
-    this.spawnTimer = 4;
-    this.spawnCooldown = 9;
+    this.spawnTimer = 3;
+    this.spawnCooldown = 6.8;
     this.nextPickupId = 1;
-    this.maxPickups = 2;
-    this.weaponPool = ["sword", "hammer", "blasters"];
+    this.maxPickups = 3;
+    this.weaponPool = ORB_POOL;
   }
 
   update(dt, players) {
@@ -110,8 +154,9 @@ export class WeaponSystem {
 
     for (const pickup of this.pickups) {
       pickup.life -= dt;
-      pickup.bobTimer += dt * 3.4;
-      pickup.y = pickup.baseY + Math.sin(pickup.bobTimer) * 6;
+      pickup.bobTimer += dt * 3.1;
+      pickup.spin += dt * 2.2;
+      pickup.y = pickup.baseY + Math.sin(pickup.bobTimer) * 7;
     }
 
     this.pickups = this.pickups.filter((pickup) => pickup.life > 0);
@@ -143,15 +188,22 @@ export class WeaponSystem {
   }
 
   applyWeapon(player, weaponType) {
-    if (!WEAPON_DEFS[weaponType]) {
+    const def = WEAPON_DEFS[weaponType];
+    if (!def || weaponType === "unarmed") {
       return;
     }
+
     player.weaponType = weaponType;
     player.weaponTime = 0;
+    player.abilityTimer = def.duration;
   }
 
   resetPlayerWeapon(player) {
     player.weaponType = "unarmed";
     player.weaponTime = 0;
+    player.abilityTimer = 0;
+    player.throwableCooldown = 0;
+    player.grenadeCooldown = 0;
+    player.teleportCooldown = 0;
   }
 }

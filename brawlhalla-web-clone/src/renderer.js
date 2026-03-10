@@ -64,10 +64,11 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    const visuals = stage.visuals || {};
     const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    gradient.addColorStop(0, "#112042");
-    gradient.addColorStop(0.55, "#172e53");
-    gradient.addColorStop(1, "#0f1b31");
+    gradient.addColorStop(0, visuals.skyTop || "#112042");
+    gradient.addColorStop(0.52, visuals.skyMid || "#172e53");
+    gradient.addColorStop(1, visuals.skyBottom || "#0f1b31");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -75,7 +76,9 @@ export class Renderer {
 
     this.drawParallax(stage, ctx);
     this.drawStage(stage, ctx);
+    this.drawStageElements(stage, ctx);
     this.drawWeaponPickups(weaponSystem.pickups, ctx);
+    this.drawProjectiles(combat.projectiles || [], ctx);
     particles.draw(ctx);
 
     for (const player of players) {
@@ -91,13 +94,15 @@ export class Renderer {
 
     this.camera.end(ctx);
 
-    this.drawHud(players, phase, countdown, winner, botEnabled, fps, displayWidth, ctx);
+    this.drawHud(stage, players, phase, countdown, winner, botEnabled, fps, displayWidth, ctx);
   }
 
   drawParallax(stage, ctx) {
+    const visuals = stage.visuals || {};
+
     const skyGlow = ctx.createRadialGradient(stage.centerX, 70, 80, stage.centerX, 180, 980);
-    skyGlow.addColorStop(0, "rgba(99, 189, 255, 0.19)");
-    skyGlow.addColorStop(0.55, "rgba(116, 134, 255, 0.08)");
+    skyGlow.addColorStop(0, visuals.sun || "rgba(99, 189, 255, 0.19)");
+    skyGlow.addColorStop(0.55, visuals.fog || "rgba(116, 134, 255, 0.08)");
     skyGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = skyGlow;
     ctx.fillRect(stage.blastZone.left, stage.blastZone.top, stage.blastZone.right - stage.blastZone.left, 900);
@@ -108,15 +113,15 @@ export class Renderer {
       const x = stage.blastZone.left + xSeed * (stage.blastZone.right - stage.blastZone.left);
       const y = stage.blastZone.top + 80 + ySeed * 340;
       const radius = 0.8 + (i % 3) * 0.6;
-      ctx.fillStyle = i % 4 === 0 ? "rgba(255, 248, 215, 0.75)" : "rgba(190, 226, 255, 0.62)";
+      ctx.fillStyle = i % 4 === 0 ? (visuals.starColor || "rgba(255, 248, 215, 0.75)") : "rgba(190, 226, 255, 0.52)";
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
 
     const ridgeLayers = [
-      { y: 600, color: "rgba(16, 33, 66, 0.72)", wave: 55, step: 220 },
-      { y: 640, color: "rgba(11, 25, 50, 0.85)", wave: 40, step: 180 },
+      { y: 600, color: visuals.hazeNear || "rgba(16, 33, 66, 0.72)", wave: 55, step: 220 },
+      { y: 640, color: visuals.hazeFar || "rgba(11, 25, 50, 0.85)", wave: 40, step: 180 },
     ];
 
     for (const ridge of ridgeLayers) {
@@ -143,15 +148,20 @@ export class Renderer {
   }
 
   drawStage(stage, ctx) {
+    const visuals = stage.visuals || {};
+    const mainPalette = visuals.platformMain || ["#77c4ff", "#4d92de", "#2c4f88"];
+    const altPalette = visuals.platformAlt || ["#9fd5ff", "#6ea7e0", "#3f628d"];
+
     for (const platform of stage.platforms) {
       const isMain = platform.id === "main";
       const gradient = ctx.createLinearGradient(0, platform.y, 0, platform.y + platform.height);
-      gradient.addColorStop(0, isMain ? "#77c4ff" : "#9fd5ff");
-      gradient.addColorStop(0.55, isMain ? "#4d92de" : "#6ea7e0");
-      gradient.addColorStop(1, isMain ? "#2c4f88" : "#3f628d");
+      const palette = isMain ? mainPalette : altPalette;
+      gradient.addColorStop(0, palette[0]);
+      gradient.addColorStop(0.55, palette[1]);
+      gradient.addColorStop(1, palette[2]);
 
       ctx.shadowColor = isMain ? "rgba(104, 206, 255, 0.4)" : "rgba(150, 205, 255, 0.24)";
-      ctx.shadowBlur = isMain ? 18 : 10;
+      ctx.shadowBlur = platform.motion ? 20 : isMain ? 18 : 10;
 
       ctx.fillStyle = gradient;
       ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
@@ -164,7 +174,9 @@ export class Renderer {
       ctx.fillStyle = highlight;
       ctx.fillRect(platform.x + 2, platform.y + 2, platform.width - 4, platform.height * 0.45);
 
-      ctx.strokeStyle = isMain ? "#ffd28f" : "#c7deff";
+      ctx.strokeStyle = isMain
+        ? (visuals.platformEdgeMain || "#ffd28f")
+        : (visuals.platformEdgeAlt || "#c7deff");
       ctx.lineWidth = 2;
       ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
 
@@ -176,29 +188,90 @@ export class Renderer {
     }
   }
 
+  drawStageElements(stage, ctx) {
+    if (!stage.teleportGates) {
+      return;
+    }
+
+    for (const gate of stage.teleportGates) {
+      const ring = ctx.createRadialGradient(gate.x, gate.y, gate.radius * 0.2, gate.x, gate.y, gate.radius * 1.45);
+      ring.addColorStop(0, colorWithAlpha(gate.color, 0.2));
+      ring.addColorStop(0.62, colorWithAlpha(gate.color, 0.68));
+      ring.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = ring;
+      ctx.fillRect(gate.x - gate.radius * 1.45, gate.y - gate.radius * 1.45, gate.radius * 2.9, gate.radius * 2.9);
+
+      ctx.strokeStyle = colorWithAlpha(gate.color, 0.95);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(gate.x, gate.y, gate.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   drawWeaponPickups(pickups, ctx) {
     for (const pickup of pickups) {
       const weapon = WEAPON_DEFS[pickup.type];
+      const centerX = pickup.x + pickup.width * 0.5;
+      const centerY = pickup.y + pickup.height * 0.5;
+      const radius = pickup.width * 0.44;
       const glow = ctx.createRadialGradient(
-        pickup.x + pickup.width * 0.5,
-        pickup.y + pickup.height * 0.5,
+        centerX,
+        centerY,
         2,
-        pickup.x + pickup.width * 0.5,
-        pickup.y + pickup.height * 0.5,
-        24
+        centerX,
+        centerY,
+        radius * 2.2
       );
-      glow.addColorStop(0, colorWithAlpha(weapon.color, 0.82));
+      glow.addColorStop(0, colorWithAlpha(weapon.color, 0.95));
       glow.addColorStop(1, "rgba(255,255,255,0)");
 
       ctx.fillStyle = glow;
-      ctx.fillRect(pickup.x - 10, pickup.y - 10, pickup.width + 20, pickup.height + 20);
+      ctx.fillRect(centerX - radius * 2.2, centerY - radius * 2.2, radius * 4.4, radius * 4.4);
 
-      ctx.fillStyle = weapon.color;
-      ctx.fillRect(pickup.x, pickup.y, pickup.width, pickup.height);
+      const orb = ctx.createRadialGradient(centerX - radius * 0.28, centerY - radius * 0.32, radius * 0.15, centerX, centerY, radius);
+      orb.addColorStop(0, "rgba(255,255,255,0.92)");
+      orb.addColorStop(0.35, colorWithAlpha(weapon.color, 0.96));
+      orb.addColorStop(1, colorWithAlpha(weapon.color, 0.34));
+      ctx.fillStyle = orb;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
 
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(pickup.x, pickup.y, pickup.width, pickup.height);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = colorWithAlpha(weapon.color, 0.82);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const sweepStart = pickup.spin;
+      const sweepEnd = sweepStart + Math.PI * 1.2;
+      ctx.arc(centerX, centerY, radius + 6, sweepStart, sweepEnd);
+      ctx.stroke();
+    }
+  }
+
+  drawProjectiles(projectiles, ctx) {
+    for (const projectile of projectiles) {
+      const glow = ctx.createRadialGradient(projectile.x, projectile.y, 1, projectile.x, projectile.y, projectile.radius * 2.2);
+      glow.addColorStop(0, "rgba(255,255,255,0.95)");
+      glow.addColorStop(0.45, colorWithAlpha(projectile.color, 0.92));
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(
+        projectile.x - projectile.radius * 2.2,
+        projectile.y - projectile.radius * 2.2,
+        projectile.radius * 4.4,
+        projectile.radius * 4.4
+      );
+
+      ctx.fillStyle = colorWithAlpha(projectile.color, 0.95);
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, projectile.radius * 0.85, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -319,7 +392,7 @@ export class Renderer {
     }
   }
 
-  drawHud(players, phase, countdown, winner, botEnabled, fps, width, ctx) {
+  drawHud(stage, players, phase, countdown, winner, botEnabled, fps, width, ctx) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -387,7 +460,9 @@ export class Renderer {
 
       ctx.fillStyle = "#f9f2d0";
       ctx.font = "14px Trebuchet MS";
-      ctx.fillText(`Stocks: ${player.stocks}`, nameX, y + 80);
+      const abilityName = WEAPON_DEFS[player.weaponType]?.name || "None";
+      const abilityText = player.abilityTimer > 0 ? `${abilityName} (${Math.ceil(player.abilityTimer)}s)` : "None";
+      ctx.fillText(`Stocks: ${player.stocks} | Orb: ${abilityText}`, nameX, y + 80);
     });
 
     ctx.textAlign = "center";
@@ -418,7 +493,7 @@ export class Renderer {
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = "13px Trebuchet MS";
     ctx.fillText(
-      `Mode: ${botEnabled ? "P1 vs Bot" : "Local P1 vs P2"} | Alive: ${alivePlayers.length} | FPS: ${fps}`,
+      `Stage: ${stage.name} | Mode: ${botEnabled ? "P1 vs Bot" : "Local P1 vs P2"} | Alive: ${alivePlayers.length} | FPS: ${fps}`,
       this.canvas.width * 0.5,
       24
     );

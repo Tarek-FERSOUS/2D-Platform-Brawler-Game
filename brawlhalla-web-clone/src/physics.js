@@ -1,4 +1,5 @@
 ﻿import { resolveStageCollisions, tryLedgeGrab } from "./collision.js";
+import { WEAPON_DEFS } from "./weapons.js";
 
 export const PHYSICS_CONFIG = {
   gravity: 2500,
@@ -30,6 +31,19 @@ function approach(current, target, delta) {
 export function updatePlayerPhysics(player, intent, stage, dt) {
   player.prevX = player.x;
   player.prevY = player.y;
+
+  const ability = WEAPON_DEFS[player.weaponType] || WEAPON_DEFS.unarmed;
+
+  if (player.onGround && player.groundPlatformId) {
+    const groundPlatform = stage.platforms.find((platform) => platform.id === player.groundPlatformId);
+    if (groundPlatform && (groundPlatform.deltaX || groundPlatform.deltaY)) {
+      player.x += groundPlatform.deltaX;
+      player.y += groundPlatform.deltaY;
+      player.prevX += groundPlatform.deltaX;
+      player.prevY += groundPlatform.deltaY;
+    }
+  }
+
   const wallContact = player.touchingWall;
   player.touchingWall = null;
 
@@ -40,12 +54,12 @@ export function updatePlayerPhysics(player, intent, stage, dt) {
     player.attackLockTimer <= 0;
 
   if (inControl && player.ledgeLockTimer <= 0) {
-    const acceleration = player.onGround
+    const acceleration = (player.onGround
       ? PHYSICS_CONFIG.groundAcceleration
-      : PHYSICS_CONFIG.airAcceleration;
+      : PHYSICS_CONFIG.airAcceleration) * ability.speedMultiplier;
 
     if (intent.moveX !== 0) {
-      const targetSpeed = intent.moveX * PHYSICS_CONFIG.maxRunSpeed;
+      const targetSpeed = intent.moveX * PHYSICS_CONFIG.maxRunSpeed * ability.speedMultiplier;
       player.vx = approach(player.vx, targetSpeed, acceleration * dt);
       player.facing = intent.moveX > 0 ? 1 : -1;
     } else {
@@ -73,7 +87,7 @@ export function updatePlayerPhysics(player, intent, stage, dt) {
       } else if (player.recoveryCharges > 0 && player.y > stage.recoveryTriggerY) {
         // Off-stage recovery boost if jumps are exhausted.
         const targetX = stage.centerX - (player.x + player.width * 0.5);
-        const horizontal = Math.sign(targetX) * PHYSICS_CONFIG.recoveryHorizontal;
+        const horizontal = Math.sign(targetX) * PHYSICS_CONFIG.recoveryHorizontal * ability.speedMultiplier;
         player.vx = horizontal;
         player.vy = -PHYSICS_CONFIG.recoveryVertical;
         player.recoveryCharges -= 1;
@@ -89,8 +103,8 @@ export function updatePlayerPhysics(player, intent, stage, dt) {
     ? PHYSICS_CONFIG.fastFallMultiplier
     : 1;
 
-  player.vy += PHYSICS_CONFIG.gravity * gravityScale * dt;
-  player.vy = Math.min(player.vy, PHYSICS_CONFIG.maxFallSpeed);
+  player.vy += PHYSICS_CONFIG.gravity * gravityScale * ability.gravityMultiplier * dt;
+  player.vy = Math.min(player.vy, PHYSICS_CONFIG.maxFallSpeed * ability.maxFallMultiplier);
 
   player.x += player.vx * dt;
   player.y += player.vy * dt;
